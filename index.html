@@ -948,5 +948,158 @@ Xie, Y., Xu L., Li, J., <b>Deng, X.</b>, Hong, Y., and Kolivras, K. N. (2019).</
     <script src="files/jquery.htm"></script>
     <script src="files/bootstrap.htm"></script>
     <!-- <script src="http://getbootstrap.com/dist/js/bootstrap.min.js"></script> -->
-  
+
+<style>
+  .pubs-toolbar{display:flex;gap:.5rem;align-items:center;margin:.75rem 0 .35rem}
+  .pubs-btn{padding:.45rem .7rem;border:1px solid rgba(0,0,0,.12);border-radius:10px;background:#fff;
+            font:600 14px/1 system-ui,-apple-system,Segoe UI,Roboto,Inter,Arial;cursor:pointer}
+  .pubs-btn[aria-pressed="true"]{background:#f6f7f9}
+  .pubs-hint{font:13px/1.2 system-ui;color:#6b7280}
+  .pubs-item{margin:.35rem 0}
+  .pubs-item.pubs-hidden{display:none}
+  .pubs-y{display:inline-block;font-size:12px;padding:2px 8px;border-radius:999px;background:#f6f7f9;color:#6b7280;margin-left:.4rem}
+</style>
+
+<script>
+document.addEventListener('DOMContentLoaded', function(){
+  // ——— CONFIG ———
+  const RECENT_YEARS = 3;   // show last N calendar years by default
+  const USE_TOP_N = null;   // e.g., 15 to show top N items; leave null to use year-based
+
+  // 1) Boundaries: everything from #pubs to #teach is considered publications
+  const start = document.querySelector('#pubs');   // <div id="pubs" ...><h2>Publications and Reports</h2></div>
+  const stop  = document.querySelector('#teach');  // next section start
+  if(!start || !stop) return;
+
+  // 2) Scoop up all nodes in between into a working container
+  const container = document.createElement('div');
+  let n = start.nextSibling;
+  while(n && n !== stop){
+    const next = n.nextSibling;
+    container.appendChild(n); // moves node out of DOM
+    n = next;
+  }
+  // Reinsert container where the publications used to be
+  start.parentNode.insertBefore(container, stop);
+
+  // 3) Your HTML separates entries with an empty <p></p>.
+  // Group nodes into items delimited by <p> tags.
+  const items = [];
+  let buf = document.createDocumentFragment();
+
+  function flushItem(){
+    const wrap = document.createElement('div');
+    wrap.className = 'pubs-item';
+    wrap.appendChild(buf);
+    // Ignore empty items
+    if (wrap.textContent.trim()) items.push(wrap);
+    buf = document.createDocumentFragment();
+  }
+
+  Array.from(container.childNodes).forEach(node=>{
+    if(node.nodeType === 1 && node.tagName === 'P'){ // delimiter
+      // drop the delimiter <p> and flush what we’ve buffered
+      node.remove();
+      flushItem();
+    } else {
+      buf.appendChild(node);
+    }
+  });
+  // last group (if leftover)
+  if (buf.hasChildNodes()) flushItem();
+
+  // If we somehow didn’t find any items, bail
+  if(items.length === 0) return;
+
+  // 4) Clear container and re-append clean item wrappers
+  container.innerHTML = '';
+  items.forEach(it => container.appendChild(it));
+
+  // 5) Detect year on each item and add a tiny chip
+  const yearOf = el => {
+    const m = el.textContent.match(/(?:19|20)\d{2}/);
+    return m ? parseInt(m[0], 10) : null;
+  };
+  items.forEach(it=>{
+    const y = yearOf(it);
+    if (y && !it.querySelector('.pubs-y')) {
+      const chip = document.createElement('span');
+      chip.className = 'pubs-y';
+      chip.textContent = y;
+      // append chip at the end of the item
+      it.appendChild(chip);
+    }
+    it._year = y;
+  });
+
+  // 6) Build toolbar just after the Publications header (the <h2> is inside #pubs)
+  const pubsHeader = start.querySelector('h2') || start;
+  const toolbar = document.createElement('div');
+  toolbar.className = 'pubs-toolbar';
+
+  const btnToggle = document.createElement('button');
+  btnToggle.className = 'pubs-btn';
+  btnToggle.id = 'pubs-toggle';
+  btnToggle.setAttribute('aria-expanded','false');
+  btnToggle.textContent = 'Show older';
+
+  const btnRecent = document.createElement('button');
+  btnRecent.className = 'pubs-btn';
+  btnRecent.id = 'pubs-recent';
+  btnRecent.setAttribute('aria-pressed','true');
+  btnRecent.textContent = 'Recent only';
+
+  const hint = document.createElement('span');
+  hint.className = 'pubs-hint';
+
+  toolbar.append(btnToggle, btnRecent, hint);
+  pubsHeader.insertAdjacentElement('afterend', toolbar);
+
+  // 7) Filter logic
+  const thisYear = new Date().getFullYear();
+  const cutoff = thisYear - (RECENT_YEARS - 1);
+
+  function applyRecent(){
+    let hidden = 0;
+    if (Number.isInteger(USE_TOP_N) && USE_TOP_N > 0){
+      items.forEach((it, idx) => {
+        const keep = idx < USE_TOP_N;
+        it.classList.toggle('pubs-hidden', !keep);
+        if(!keep) hidden++;
+      });
+      hint.textContent = `Showing most recent ${USE_TOP_N}`;
+    } else {
+      items.forEach(it=>{
+        const keep = (it._year == null) ? true : (it._year >= cutoff);
+        it.classList.toggle('pubs-hidden', !keep);
+        if(!keep) hidden++;
+      });
+      hint.textContent = `Showing last ${RECENT_YEARS} year${RECENT_YEARS>1?'s':''}`;
+    }
+    btnRecent.setAttribute('aria-pressed','true');
+    btnToggle.setAttribute('aria-expanded','false');
+    btnToggle.textContent = hidden > 0 ? `Show ${hidden} older` : 'Show older';
+  }
+
+  function showAll(){
+    items.forEach(it => it.classList.remove('pubs-hidden'));
+    hint.textContent = 'Showing all';
+    btnRecent.setAttribute('aria-pressed','false');
+    btnToggle.setAttribute('aria-expanded','true');
+    btnToggle.textContent = 'Hide older';
+  }
+
+  btnRecent.addEventListener('click', applyRecent);
+  btnToggle.addEventListener('click', ()=>{
+    const expanded = btnToggle.getAttribute('aria-expanded') === 'true';
+    expanded ? applyRecent() : showAll();
+  });
+
+  // 8) URL flags: ?all=1 or #all to expand initially
+  const url = new URL(window.location.href);
+  const expandAll = url.searchParams.get('all') === '1' || window.location.hash === '#all';
+  expandAll ? showAll() : applyRecent();
+});
+</script>
+	  
 </div></body></html>
