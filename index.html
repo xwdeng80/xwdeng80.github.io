@@ -951,9 +951,10 @@ Xie, Y., Xu L., Li, J., <b>Deng, X.</b>, Hong, Y., and Kolivras, K. N. (2019).</
 
 <!------Enable only showing recent publications------>
 <style>
-  /* one tiny class to hide nodes without changing structure */
+  /* Hide class applied to entry nodes/wrappers */
   .pubs-hide { display: none; }
 
+  /* Toolbar styles (optional) */
   .pubs-toolbar{
     display:flex;gap:.5rem;align-items:center;margin:.75rem 0 .35rem
   }
@@ -971,12 +972,11 @@ document.addEventListener('DOMContentLoaded', function(){
   const RECENT_YEARS = 3;   // show last N calendar years by default
   // =====================
 
-  // Region: from #pubs (header div) to #teach (next section)
   const regionStart = document.querySelector('#pubs');
   const regionEnd   = document.querySelector('#teach');
   if (!regionStart || !regionEnd) return;
 
-  // Add a simple toolbar just under the Publications h2
+  // Toolbar just under Publications h2
   const header = regionStart.querySelector('h2') || regionStart;
   const toolbar = document.createElement('div');
   toolbar.className = 'pubs-toolbar';
@@ -990,55 +990,81 @@ document.addEventListener('DOMContentLoaded', function(){
   toolbar.append(btnToggle, btnRecent, hint);
   header.insertAdjacentElement('afterend', toolbar);
 
-  // Helper: is an empty <p></p> delimiter?
+  // Helpers
   const isEmptyP = node =>
     node && node.nodeType === 1 && node.tagName === 'P' &&
     node.textContent.trim() === '' && node.children.length === 0;
 
-  // Collect ALL nodes between #pubs and #teach for a single linear pass
-  const between = [];
-  for (let n = regionStart.nextSibling; n && n !== regionEnd; n = n.nextSibling) between.push(n);
+  // Ensure we can toggle visibility even for text nodes:
+  // if node is a text node, wrap it in a span once and return that wrapper.
+  function ensureElement(node){
+    if (!node) return null;
+    if (node.nodeType === 1) return node;              // element
+    if (node.nodeType === 3) {                          // text
+      // ignore pure whitespace between blocks
+      if (node.textContent.trim() === '') return null;
+      const wrap = document.createElement('span');
+      wrap.className = 'pubs-wrap';
+      node.parentNode.insertBefore(wrap, node);
+      wrap.appendChild(node);
+      return wrap;
+    }
+    return null; // comments etc.
+  }
 
-  // Build entries: start at each <span class="author">; stop at next empty <p>
-  const entries = [];  // each: {year:number|null, nodes:Node[]}
+  // Gather all nodes between #pubs and #teach for linear scan
+  const between = [];
+  for (let n = regionStart.nextSibling; n && n !== regionEnd; n = n.nextSibling) {
+    between.push(n);
+  }
+
+  // Build entries: start at each <span class="author">; include everything up to next blank <p>
+  const entries = []; // {year:number|null, nodes: Node[]}
   between.forEach(node => {
     if (node.nodeType !== 1) return;
-    node.querySelectorAll && node.querySelectorAll('span.author').forEach(authorSpan => {
-      // Avoid double-counting authors that are descendants of other entries
-      if (authorSpan.closest('[data-pubs-entry="1"]')) return;
+    // Find author spans contained in this node
+    const spans = node.querySelectorAll ? node.querySelectorAll('span.author') : [];
+    spans.forEach(authorSpan => {
+      if (authorSpan.closest('[data-pubs-entry="1"]')) return; // already tagged by earlier pass
 
       const nodes = [];
-      // mark nodes we attach to this entry (no moving; just tagging)
       let cursor = authorSpan;
       while (cursor && cursor !== regionEnd) {
         nodes.push(cursor);
         const next = cursor.nextSibling;
-        if (next && isEmptyP(next)) {
-          nodes.push(next); // include the delimiter in the same visibility group
+
+        if (next && isEmptyP(next)) { // include the delimiter and stop
+          nodes.push(next);
           break;
         }
-        // Stop if we would cross into the next author span at the same level
-        if (next && next.nodeType === 1 && next.matches && next.matches('span.author')) break;
+        if (next && next.nodeType === 1 && next.matches && next.matches('span.author')) {
+          // next entry starts; stop before consuming it
+          break;
+        }
         cursor = next;
         if (!cursor) break;
       }
 
-      // derive year: prefer (YYYY) in the author span text
+      // Year: prefer (YYYY) in the author span; fallback to latest 4-digit year across nodes
       const mParen = authorSpan.textContent.match(/\((19|20)\d{2}\)/);
-      let year = mParen ? parseInt(mParen[0].slice(1,-1), 10) : null;
+      let year = mParen ? parseInt(mParen[0].slice(1, -1), 10) : null;
       if (year == null) {
-        const all = nodes.map(n => n.textContent || '').join(' ').match(/(19|20)\d{2}/g);
-        year = all ? Math.max(...all.map(y => parseInt(y,10))) : null;
+        const all = nodes.map(n => (n.textContent || '')).join(' ').match(/(19|20)\d{2}/g);
+        year = all ? Math.max(...all.map(y => parseInt(y, 10))) : null;
       }
 
-      // tag nodes so we can toggle later (without restructuring)
-      nodes.forEach(n => { if (n.nodeType === 1) n.setAttribute('data-pubs-entry','1'); });
-      entries.push({year, nodes});
+      // Tag nodes for this entry and normalize to elements (wrap text nodes when needed)
+      const togglables = [];
+      nodes.forEach(n => {
+        const el = ensureElement(n);
+        if (el) {
+          el.setAttribute('data-pubs-entry','1');
+          togglables.push(el);
+        }
+      });
+
+      if (togglables.length) entries.push({year, nodes: togglables});
     });
-    // Also count top-level author spans that are themselves the node
-    if (node.matches && node.matches('span.author')) {
-      // handled by the querySelectorAll above on its parent
-    }
   });
 
   if (!entries.length) { hint.textContent = 'No entries detected'; return; }
@@ -1047,10 +1073,7 @@ document.addEventListener('DOMContentLoaded', function(){
   const cutoff = thisYear - (RECENT_YEARS - 1);
 
   function setVisible(entry, keep){
-    entry.nodes.forEach(n => {
-      if (n.nodeType === 1) n.classList.toggle('pubs-hide', !keep);
-      // text nodes are fine; they will be hidden with surrounding elements
-    });
+    entry.nodes.forEach(el => el.classList.toggle('pubs-hide', !keep));
   }
 
   function applyRecent(){
@@ -1065,8 +1088,8 @@ document.addEventListener('DOMContentLoaded', function(){
     btnToggle.textContent = hidden > 0 ? `Show ${hidden} older` : 'Show older';
     hint.textContent = `Showing last ${RECENT_YEARS} year${RECENT_YEARS>1?'s':''}`;
 
-    // safety net: if everything is hidden (e.g., all < cutoff), show all
-    if (entries.every(e => e.nodes[0].nodeType === 1 && e.nodes[0].classList.contains('pubs-hide'))) {
+    // Safety: if everything hidden (all < cutoff), show all
+    if (entries.every(e => e.nodes.every(el => el.classList.contains('pubs-hide')))) {
       showAll();
     }
   }
@@ -1091,5 +1114,6 @@ document.addEventListener('DOMContentLoaded', function(){
   expandAll ? showAll() : applyRecent();
 });
 </script>
+
 	  
 </div></body></html>
