@@ -950,7 +950,7 @@ Xie, Y., Xu L., Li, J., <b>Deng, X.</b>, Hong, Y., and Kolivras, K. N. (2019).</
     <!-- <script src="http://getbootstrap.com/dist/js/bootstrap.min.js"></script> -->
 
 <!------Enable only showing recent publications------>
-	  <style>
+<style>
   .pubs-toolbar{display:flex;gap:.5rem;align-items:center;margin:.75rem 0 .35rem}
   .pubs-btn{padding:.45rem .7rem;border:1px solid rgba(0,0,0,.12);border-radius:10px;background:#fff;
             font:600 14px/1 system-ui,-apple-system,Segoe UI,Roboto,Inter,Arial;cursor:pointer}
@@ -964,74 +964,15 @@ Xie, Y., Xu L., Li, J., <b>Deng, X.</b>, Hong, Y., and Kolivras, K. N. (2019).</
 <script>
 document.addEventListener('DOMContentLoaded', function(){
   // ——— CONFIG ———
-  const RECENT_YEARS = 3;   // show last N calendar years by default
-  const USE_TOP_N = null;   // e.g., 20 to show top N items; null = use years
+  const RECENT_YEARS = 3;     // show last N years by default
+  const USE_TOP_N = null;     // e.g., 20 to show top N items; null = use years
 
-  // 1) Boundaries: everything from #pubs to #teach is considered publications
-  const start = document.querySelector('#pubs');   // <div id="pubs" ...><h2>Publications and Reports</h2></div>
-  const stop  = document.querySelector('#teach');  // next section start
+  // Boundaries: everything from #pubs to #teach is considered publications
+  const start = document.querySelector('#pubs');
+  const stop  = document.querySelector('#teach');
   if(!start || !stop) return;
 
-  // 2) Scoop up all nodes in between into a working container
-  const container = document.createElement('div');
-  let n = start.nextSibling;
-  while(n && n !== stop){
-    const next = n.nextSibling;
-    container.appendChild(n); // moves node out of DOM
-    n = next;
-  }
-  // Reinsert container where the publications used to be
-  start.parentNode.insertBefore(container, stop);
-
-  // 3) Your HTML separates entries with an empty <p></p>.
-  // Group nodes into items delimited by <p> tags.
-  const items = [];
-  let buf = document.createDocumentFragment();
-
-  function flushItem(){
-    const wrap = document.createElement('div');
-    wrap.className = 'pubs-item';
-    wrap.appendChild(buf);
-    if (wrap.textContent.trim()) items.push(wrap);
-    buf = document.createDocumentFragment();
-  }
-
-  Array.from(container.childNodes).forEach(node=>{
-    if(node.nodeType === 1 && node.tagName === 'P'){ // delimiter
-      node.remove();
-      flushItem();
-    } else {
-      buf.appendChild(node);
-    }
-  });
-  if (buf.hasChildNodes()) flushItem();
-  if(items.length === 0) return;
-
-  container.innerHTML = '';
-  items.forEach(it => container.appendChild(it));
-
-  // 4) Detect year (use one inside parentheses after authors)
-  const yearOf = el => {
-    // look for (YYYY) early in the text
-    const m = el.textContent.match(/\((19|20)\d{2}\)/);
-    if (m) return parseInt(m[0].replace(/[()]/g, ''), 10);
-    // fallback: take the maximum 4-digit year if parentheses missing
-    const all = el.textContent.match(/(19|20)\d{2}/g);
-    return all ? Math.max(...all.map(y => parseInt(y, 10))) : null;
-  };
-
-  items.forEach(it=>{
-    const y = yearOf(it);
-    if (y && !it.querySelector('.pubs-y')) {
-      const chip = document.createElement('span');
-      chip.className = 'pubs-y';
-      chip.textContent = y;
-      it.appendChild(chip);
-    }
-    it._year = y;
-  });
-
-  // 5) Toolbar just after the Publications header
+  // 1) Build a toolbar immediately after the "Publications and Reports" header
   const pubsHeader = start.querySelector('h2') || start;
   const toolbar = document.createElement('div');
   toolbar.className = 'pubs-toolbar';
@@ -1054,7 +995,76 @@ document.addEventListener('DOMContentLoaded', function(){
   toolbar.append(btnToggle, btnRecent, hint);
   pubsHeader.insertAdjacentElement('afterend', toolbar);
 
-  // 6) Filter logic
+  // 2) Wrap entries IN PLACE.
+  // Your HTML separates entries with empty <p></p> lines.
+  // We'll walk siblings between #pubs and #teach, wrapping nodes up to each empty <p>.
+  const items = [];
+  let node = start.nextSibling;
+  let currentWrapper = null;
+
+  function startNewWrapper(beforeNode){
+    const wrap = document.createElement('div');
+    wrap.className = 'pubs-item';
+    // Insert wrapper right before the node that will be moved into it
+    beforeNode.parentNode.insertBefore(wrap, beforeNode);
+    currentWrapper = wrap;
+    items.push(wrap);
+  }
+
+  function closeWrapper(){
+    if(currentWrapper && !currentWrapper.textContent.trim()){
+      // Remove empty wrapper if it has no meaningful content
+      currentWrapper.remove();
+      items.pop();
+    }
+    currentWrapper = null;
+  }
+
+  function isEmptyP(el){
+    return el && el.nodeType === 1 && el.tagName === 'P' && el.textContent.trim() === '' && el.children.length === 0;
+  }
+
+  while(node && node !== stop){
+    const next = node.nextSibling;
+
+    if (node.nodeType === 1 && isEmptyP(node)) {
+      // delimiter: end current item
+      node.remove();          // drop the delimiter <p>
+      closeWrapper();
+    } else {
+      if (!currentWrapper) startNewWrapper(node);
+      currentWrapper.appendChild(node); // move node into wrapper
+    }
+
+    node = next;
+  }
+  // close last item if needed
+  closeWrapper();
+
+  if (items.length === 0) return;
+
+  // 3) Year detection tailored to your "(YYYY)" after authors format
+  const yearOf = el => {
+    // prefer (YYYY) right after authors
+    const m = el.textContent.match(/\((19|20)\d{2}\)/);
+    if (m) return parseInt(m[0].replace(/[()]/g,''), 10);
+    // fallback: latest year anywhere in text
+    const all = el.textContent.match(/(19|20)\d{2}/g);
+    return all ? Math.max(...all.map(y => parseInt(y, 10))) : null;
+  };
+
+  items.forEach(it=>{
+    const y = yearOf(it);
+    it._year = y;
+    if (y && !it.querySelector('.pubs-y')) {
+      const chip = document.createElement('span');
+      chip.className = 'pubs-y';
+      chip.textContent = y;
+      it.appendChild(chip);
+    }
+  });
+
+  // 4) Filtering logic (no reordering; preserves your current order)
   const thisYear = new Date().getFullYear();
   const cutoff = thisYear - (RECENT_YEARS - 1);
 
@@ -1068,7 +1078,7 @@ document.addEventListener('DOMContentLoaded', function(){
       });
       hint.textContent = `Showing most recent ${USE_TOP_N}`;
     } else {
-      items.forEach(it=>{
+      items.forEach(it => {
         const keep = (it._year == null) ? true : (it._year >= cutoff);
         it.classList.toggle('pubs-hidden', !keep);
         if(!keep) hidden++;
@@ -1094,11 +1104,13 @@ document.addEventListener('DOMContentLoaded', function(){
     expanded ? applyRecent() : showAll();
   });
 
+  // 5) Initial state via URL flags
   const url = new URL(window.location.href);
   const expandAll = url.searchParams.get('all') === '1' || window.location.hash === '#all';
   expandAll ? showAll() : applyRecent();
 });
 </script>
+
 
 	  
 </div></body></html>
