@@ -964,16 +964,21 @@ Xie, Y., Xu L., Li, J., <b>Deng, X.</b>, Hong, Y., and Kolivras, K. N. (2019).</
 <script>
 document.addEventListener('DOMContentLoaded', function(){
   // ——— CONFIG ———
-  const RECENT_YEARS = 3;     // show last N years by default
-  const USE_TOP_N = 30;     // e.g., 20 to show top N items; null = use years
+  const RECENT_YEARS = 3;      // show last N calendar years by default
+  const USE_TOP_N = null;      // e.g., 20 to show top N entries; null => use years
 
-  // Boundaries: everything from #pubs to #teach is considered publications
-  const start = document.querySelector('#pubs');
-  const stop  = document.querySelector('#teach');
-  if(!start || !stop) return;
+  // Boundaries
+  const pubsHeaderBlock = document.querySelector('#pubs');
+  const teachBlock = document.querySelector('#teach');
+  if (!pubsHeaderBlock || !teachBlock) return;
 
-  // 1) Build a toolbar immediately after the "Publications and Reports" header
-  const pubsHeader = start.querySelector('h2') || start;
+  // The publications content is in the FIRST .lead AFTER the "Refereed  Articles" heading (#journal)
+  const journalHeader = document.querySelector('#journal');
+  const lead = journalHeader ? journalHeader.nextElementSibling : null;
+  if (!lead || !lead.classList.contains('lead')) return;
+
+  // Insert toolbar just after the main Publications h2
+  const pubsH2 = pubsHeaderBlock.querySelector('h2') || pubsHeaderBlock;
   const toolbar = document.createElement('div');
   toolbar.className = 'pubs-toolbar';
 
@@ -993,67 +998,57 @@ document.addEventListener('DOMContentLoaded', function(){
   hint.className = 'pubs-hint';
 
   toolbar.append(btnToggle, btnRecent, hint);
-  pubsHeader.insertAdjacentElement('afterend', toolbar);
+  pubsH2.insertAdjacentElement('afterend', toolbar);
 
-  // 2) Wrap entries IN PLACE.
-  // Your HTML separates entries with empty <p></p> lines.
-  // We'll walk siblings between #pubs and #teach, wrapping nodes up to each empty <p>.
+  // ——— Build items INSIDE the .lead div using empty <p></p> as delimiters ———
   const items = [];
-  let node = start.nextSibling;
   let currentWrapper = null;
 
-  function startNewWrapper(beforeNode){
+  function startItem(beforeNode){
     const wrap = document.createElement('div');
     wrap.className = 'pubs-item';
-    // Insert wrapper right before the node that will be moved into it
-    beforeNode.parentNode.insertBefore(wrap, beforeNode);
+    lead.insertBefore(wrap, beforeNode);
     currentWrapper = wrap;
     items.push(wrap);
   }
-
-  function closeWrapper(){
-    if(currentWrapper && !currentWrapper.textContent.trim()){
-      // Remove empty wrapper if it has no meaningful content
+  function closeItem(){
+    if (currentWrapper && !currentWrapper.textContent.trim()) {
       currentWrapper.remove();
       items.pop();
     }
     currentWrapper = null;
   }
-
-  function isEmptyP(el){
-    return el && el.nodeType === 1 && el.tagName === 'P' && el.textContent.trim() === '' && el.children.length === 0;
+  function isEmptyP(node){
+    return node && node.nodeType === 1 && node.tagName === 'P'
+           && node.textContent.trim() === '' && node.children.length === 0;
   }
 
-  while(node && node !== stop){
+  // Walk CHILDREN of the .lead container and wrap groups between blank <p>
+  let node = lead.firstChild;
+  while (node) {
     const next = node.nextSibling;
-
-    if (node.nodeType === 1 && isEmptyP(node)) {
-      // delimiter: end current item
-      node.remove();          // drop the delimiter <p>
-      closeWrapper();
+    if (isEmptyP(node)) {
+      node.remove();           // drop delimiter <p>
+      closeItem();             // end current item
     } else {
-      if (!currentWrapper) startNewWrapper(node);
-      currentWrapper.appendChild(node); // move node into wrapper
+      if (!currentWrapper) startItem(node);
+      currentWrapper.appendChild(node); // move node into the wrapper
     }
-
     node = next;
   }
-  // close last item if needed
-  closeWrapper();
+  closeItem();
 
   if (items.length === 0) return;
 
-  // 3) Year detection tailored to your "(YYYY)" after authors format
+  // Year detection: prefer the (YYYY) immediately after authors; fallback to latest year anywhere
   const yearOf = el => {
-    // prefer (YYYY) right after authors
-    const m = el.textContent.match(/\((19|20)\d{2}\)/);
-    if (m) return parseInt(m[0].replace(/[()]/g,''), 10);
-    // fallback: latest year anywhere in text
+    const earlyParen = el.textContent.match(/\((19|20)\d{2}\)/);
+    if (earlyParen) return parseInt(earlyParen[0].replace(/[()]/g, ''), 10);
     const all = el.textContent.match(/(19|20)\d{2}/g);
     return all ? Math.max(...all.map(y => parseInt(y, 10))) : null;
   };
 
-  items.forEach(it=>{
+  items.forEach(it => {
     const y = yearOf(it);
     it._year = y;
     if (y && !it.querySelector('.pubs-y')) {
@@ -1064,24 +1059,24 @@ document.addEventListener('DOMContentLoaded', function(){
     }
   });
 
-  // 4) Filtering logic (no reordering; preserves your current order)
+  // Filter logic (preserve your current order; no sorting)
   const thisYear = new Date().getFullYear();
   const cutoff = thisYear - (RECENT_YEARS - 1);
 
   function applyRecent(){
     let hidden = 0;
-    if (Number.isInteger(USE_TOP_N) && USE_TOP_N > 0){
+    if (Number.isInteger(USE_TOP_N) && USE_TOP_N > 0) {
       items.forEach((it, idx) => {
         const keep = idx < USE_TOP_N;
         it.classList.toggle('pubs-hidden', !keep);
-        if(!keep) hidden++;
+        if (!keep) hidden++;
       });
       hint.textContent = `Showing most recent ${USE_TOP_N}`;
     } else {
       items.forEach(it => {
         const keep = (it._year == null) ? true : (it._year >= cutoff);
         it.classList.toggle('pubs-hidden', !keep);
-        if(!keep) hidden++;
+        if (!keep) hidden++;
       });
       hint.textContent = `Showing last ${RECENT_YEARS} year${RECENT_YEARS>1?'s':''}`;
     }
@@ -1104,13 +1099,16 @@ document.addEventListener('DOMContentLoaded', function(){
     expanded ? applyRecent() : showAll();
   });
 
-  // 5) Initial state via URL flags
+  // Initial state (URL flags supported)
   const url = new URL(window.location.href);
   const expandAll = url.searchParams.get('all') === '1' || window.location.hash === '#all';
   expandAll ? showAll() : applyRecent();
+
+  // ——— Safety net: if everything got hidden, auto-show all ———
+  if ([...items].every(it => it.classList.contains('pubs-hidden'))) {
+    showAll();
+  }
 });
 </script>
-
-
 	  
 </div></body></html>
