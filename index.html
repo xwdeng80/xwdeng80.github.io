@@ -1085,7 +1085,7 @@ document.addEventListener('DOMContentLoaded', function(){
     });
     btnRecent.setAttribute('aria-pressed','true');
     btnToggle.setAttribute('aria-expanded','false');
-    btnToggle.textContent = hidden > 0 ? `Show ${hidden} older` : 'Show older';
+    btnToggle.textContent = 'Show all';
     hint.textContent = `Showing last ${RECENT_YEARS} year${RECENT_YEARS>1?'s':''}`;
 
     // Safety: if everything hidden (all < cutoff), show all
