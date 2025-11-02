@@ -1109,9 +1109,10 @@ document.addEventListener('DOMContentLoaded', function(){
   });
 
   // Initial state
-  const url = new URL(window.location.href);
-  const expandAll = url.searchParams.get('all') === '1' || window.location.hash === '#all';
-  expandAll ? showAll() : applyRecent();
+  //const url = new URL(window.location.href);
+  //const expandAll = url.searchParams.get('all') === '1' || window.location.hash === '#all';
+  //expandAll ? showAll() : applyRecent();
+  showAll();	
 });
 </script>
 
