@@ -949,7 +949,8 @@ Xie, Y., Xu L., Li, J., <b>Deng, X.</b>, Hong, Y., and Kolivras, K. N. (2019).</
     <script src="files/bootstrap.htm"></script>
     <!-- <script src="http://getbootstrap.com/dist/js/bootstrap.min.js"></script> -->
 
-<style>
+<!------Enable only showing recent publications------>
+	  <style>
   .pubs-toolbar{display:flex;gap:.5rem;align-items:center;margin:.75rem 0 .35rem}
   .pubs-btn{padding:.45rem .7rem;border:1px solid rgba(0,0,0,.12);border-radius:10px;background:#fff;
             font:600 14px/1 system-ui,-apple-system,Segoe UI,Roboto,Inter,Arial;cursor:pointer}
@@ -964,7 +965,7 @@ Xie, Y., Xu L., Li, J., <b>Deng, X.</b>, Hong, Y., and Kolivras, K. N. (2019).</
 document.addEventListener('DOMContentLoaded', function(){
   // ——— CONFIG ———
   const RECENT_YEARS = 3;   // show last N calendar years by default
-  const USE_TOP_N = null;   // e.g., 15 to show top N items; leave null to use year-based
+  const USE_TOP_N = null;   // e.g., 20 to show top N items; null = use years
 
   // 1) Boundaries: everything from #pubs to #teach is considered publications
   const start = document.querySelector('#pubs');   // <div id="pubs" ...><h2>Publications and Reports</h2></div>
@@ -991,48 +992,46 @@ document.addEventListener('DOMContentLoaded', function(){
     const wrap = document.createElement('div');
     wrap.className = 'pubs-item';
     wrap.appendChild(buf);
-    // Ignore empty items
     if (wrap.textContent.trim()) items.push(wrap);
     buf = document.createDocumentFragment();
   }
 
   Array.from(container.childNodes).forEach(node=>{
     if(node.nodeType === 1 && node.tagName === 'P'){ // delimiter
-      // drop the delimiter <p> and flush what we’ve buffered
       node.remove();
       flushItem();
     } else {
       buf.appendChild(node);
     }
   });
-  // last group (if leftover)
   if (buf.hasChildNodes()) flushItem();
-
-  // If we somehow didn’t find any items, bail
   if(items.length === 0) return;
 
-  // 4) Clear container and re-append clean item wrappers
   container.innerHTML = '';
   items.forEach(it => container.appendChild(it));
 
-  // 5) Detect year on each item and add a tiny chip
+  // 4) Detect year (use one inside parentheses after authors)
   const yearOf = el => {
-    const m = el.textContent.match(/(?:19|20)\d{2}/);
-    return m ? parseInt(m[0], 10) : null;
+    // look for (YYYY) early in the text
+    const m = el.textContent.match(/\((19|20)\d{2}\)/);
+    if (m) return parseInt(m[0].replace(/[()]/g, ''), 10);
+    // fallback: take the maximum 4-digit year if parentheses missing
+    const all = el.textContent.match(/(19|20)\d{2}/g);
+    return all ? Math.max(...all.map(y => parseInt(y, 10))) : null;
   };
+
   items.forEach(it=>{
     const y = yearOf(it);
     if (y && !it.querySelector('.pubs-y')) {
       const chip = document.createElement('span');
       chip.className = 'pubs-y';
       chip.textContent = y;
-      // append chip at the end of the item
       it.appendChild(chip);
     }
     it._year = y;
   });
 
-  // 6) Build toolbar just after the Publications header (the <h2> is inside #pubs)
+  // 5) Toolbar just after the Publications header
   const pubsHeader = start.querySelector('h2') || start;
   const toolbar = document.createElement('div');
   toolbar.className = 'pubs-toolbar';
@@ -1055,7 +1054,7 @@ document.addEventListener('DOMContentLoaded', function(){
   toolbar.append(btnToggle, btnRecent, hint);
   pubsHeader.insertAdjacentElement('afterend', toolbar);
 
-  // 7) Filter logic
+  // 6) Filter logic
   const thisYear = new Date().getFullYear();
   const cutoff = thisYear - (RECENT_YEARS - 1);
 
@@ -1095,11 +1094,11 @@ document.addEventListener('DOMContentLoaded', function(){
     expanded ? applyRecent() : showAll();
   });
 
-  // 8) URL flags: ?all=1 or #all to expand initially
   const url = new URL(window.location.href);
   const expandAll = url.searchParams.get('all') === '1' || window.location.hash === '#all';
   expandAll ? showAll() : applyRecent();
 });
 </script>
+
 	  
 </div></body></html>
